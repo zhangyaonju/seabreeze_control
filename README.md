@@ -7,8 +7,8 @@ This code is based on the Seabreeze library written in C language.
 ## Install Seabreeze Library
 To start, one must install the seabreeze library on a Raspberry Pi III (RP3) which can be downloaded from http://oceanoptics.com/product/seabreeze/. (Version 3.0.11). One can follow the instructions on http://oceanoptics.com/api/seabreeze/.
 
-if your raspberry Pi 3 runs a raspbian OS, you will probably face the problem of missing "usb.h", you can use the command <pre><code>
-sudo apt-get install libusb-dev</code></pre>
+if your raspberry Pi 3 runs a raspbian OS, you will probably face the problem of missing "usb.h", you can use the command 
+<pre><code>sudo apt-get install libusb-dev</code></pre>
 The make process may take several minutes, please be patient.
 To test whether the installation is successful, one may use the test functions in "SeaBreeze/test/apt-test"
 
