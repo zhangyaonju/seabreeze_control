@@ -18,6 +18,6 @@ To test whether the installation is successful, one may use the test functions i
 ## Make the control function
 find the make fuction under the test directory. change the api-test.c to our filename "RP3_fluorescence_v1.00.c" and then run the make function. you can then test it using the command "./RP3_fluorescence_v1.00"
 
-## use crontab to setup the runtine
+## use crontab to setup the rountine
 one can set up a crontab command to run this fuction regualarly (recommand every 15 minutes from 6:00 am to 18:00 pm local time). and use another command to sycronize the data to an external USB drive during the midnight when the observation fuction is paused.
 
