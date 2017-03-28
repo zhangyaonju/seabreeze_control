@@ -32,6 +32,7 @@ double max_array(double *arr, int length) //get maximun value of the spectrum
 	return maxVal;
 }
 
+/*
 double dark_correct_HR(double *spectrum)	//dark_correction for HR2000+ e-dark pixels are [0~17]
 {
 	double sum_dark = 0;
@@ -50,27 +51,13 @@ double dark_correct_HR(double *spectrum)	//dark_correction for HR2000+ e-dark pi
 }
 
 
-double dark_correct_QE(double *spectrum)	//dark_correction for HR2000+ e-dark pixels are [0~3 and 1040~1043]
-{
-	double sum_dark = 0;
-	double average_dark = 0;
-	
-	for (int i = 0; i < 4; i++)
-	{
-		sum_dark += spectrum[i];
-	}
-	for (int i = 1040; i<1044; i++)
-	{
-		sum_dark += spectrum[i];
-	}	
-	average_dark = sum_dark/8;
-	
+double dark_correct_QE(double *spectrum,double *spectrum_dark)	//dark_correction for QE-pro using dark measurement
+{	
 	for (int i = 0; i < 1044; i++){
-		spectrum[i] = spectrum[i] - average_dark;
+		spectrum[i] = spectrum[i] - spectrum_dark[i];
 	}
-	return average_dark;
 }
-
+*/
 
 //get integration time for HR2000+
 long get_opt_integration_time_HR2k(long deviceID, long spectrometerID)//calibrate integration time every time before the measurement
@@ -84,6 +71,7 @@ long get_opt_integration_time_HR2k(long deviceID, long spectrometerID)//calibrat
 	int iter = 0;
 	int error;
 	int flag;
+	int max = 0;
 
 	double max_spec;
 	double *spectrum = 0;
@@ -96,40 +84,49 @@ long get_opt_integration_time_HR2k(long deviceID, long spectrometerID)//calibrat
 	printf("\nMinimum and Maximum integration time are [%ldms] [%ldms]\n", 
 		minAllowedInteTime/1000, maxAllowedInteTime/1000);
 	
+	spectrum = (double *)calloc((size_t)spec_length,sizeof(double));
 	optInteTime = minAllowedInteTime;
 	sbapi_spectrometer_set_integration_time_micros(
                 deviceID, spectrometerID, &error, optInteTime);
-	sleep(2);
-	spectrum = (double *)calloc((size_t)spec_length,sizeof(double));
-	flag = sbapi_spectrometer_get_formatted_spectrum(deviceID,
-                spectrometerID, &error, spectrum, spec_length);
-	
+			
+	flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometerID, 
+		&error, spectrum, spec_length);
+	sleep(1);
 	max_spec = max_array(spectrum, spec_length);
-	printf("\n\toptInteTime [%d], %ld ms, max value: %lf, [%d]",iter, optInteTime, max_spec, flag);
+	printf("\n\toptInteTime [%d], %ld ms, max value: %lf, [%d]",iter, optInteTime/1000, max_spec, flag);
 	
-	while(((max_spec > 16000) || (max_spec < 12000))&& (iter < maxiter)){
+	while(((max_spec > 14000) || (max_spec < 11000))&& (iter < maxiter)&&(max < 2)){
 		iter++;
-		ratio = 14000.0/(max_spec-500);
-		if (max_spec > 16000)
-			ratio = 0.5;
+		if (max_spec > 350){
+			ratio = 12500.0/(max_spec-350);
+		}else{
+			ratio = 100;
+		}
+		if (max_spec > 14000){
+			ratio = 0.65;
+			max = 0;
+		}
+			
 		optInteTime = (long)optInteTime * ratio;
 
 		if (optInteTime > maxAllowedInteTime){
 			optInteTime = maxAllowedInteTime;
+			max++;
 		}
 		if (optInteTime < minAllowedInteTime){
 			optInteTime = minAllowedInteTime;
 		}
 		sbapi_spectrometer_set_integration_time_micros(
-                deviceID, spectrometerID, &error, optInteTime);
-		sleep(2);
+                	deviceID, spectrometerID, &error, optInteTime);
+		sleep(1);
+		printf("\n\toptInteTime [%d], %ld ms",iter, optInteTime/1000);
+		
 		flag = sbapi_spectrometer_get_formatted_spectrum(deviceID,
-                spectrometerID, &error, spectrum, spec_length);
-		flag = sbapi_spectrometer_get_formatted_spectrum(deviceID,
-                spectrometerID, &error, spectrum, spec_length);
-				
+                	spectrometerID, &error, spectrum, spec_length);
+		sleep(1);		
 		max_spec = max_array(spectrum, spec_length);
-		printf("\n\toptInteTime [%d], %ld ms, max value: %lf, [%d]",iter, optInteTime, max_spec, flag);
+		printf("\n\toptInteTime [%d], %ld ms, max value: %lf, [%d]",iter, optInteTime/1000, max_spec, flag);
+		
 	}
 	free(spectrum);
 	return optInteTime;
@@ -142,43 +139,58 @@ long get_opt_integration_time_QEpro(long deviceID, long spectrometerID)//calibra
 	long minAllowedInteTime;
 	long maxAllowedInteTime = 30000000;
 	long optInteTime;
+	long *buffer_ids = 0;
 
 	int maxiter = 5;
 	int iter = 0;
 	int error;
 	int flag;
-
+	int max = 0;
+	int number_of_buffer;
+	
 	double max_spec;
 	double *spectrum = 0;
 	double ratio;
 	
+	number_of_buffer = sbapi_get_number_of_data_buffer_features(deviceID, &error);
+	buffer_ids = (long *)calloc(number_of_buffer,sizeof(long));
+	number_of_buffer = sbapi_get_data_buffer_features(deviceID, &error,
+		buffer_ids, number_of_buffer);
 	spec_length = sbapi_spectrometer_get_formatted_spectrum_length(deviceID,
                 spectrometerID, &error);
 	minAllowedInteTime = sbapi_spectrometer_get_minimum_integration_time_micros(
                 deviceID, spectrometerID, &error);
 	printf("\nMinimum and Maximum integration time are [%ldms] [%ldms]\n", 
 		minAllowedInteTime/1000, maxAllowedInteTime/1000);
-	
+	spectrum = (double *)calloc((size_t)spec_length,sizeof(double));
 	optInteTime = minAllowedInteTime;
 	sbapi_spectrometer_set_integration_time_micros(
                 deviceID, spectrometerID, &error, optInteTime);
 	sleep(2);
-	spectrum = (double *)calloc((size_t)spec_length,sizeof(double));
+
+	sbapi_data_buffer_clear(deviceID, buffer_ids[0], &error);
 	flag = sbapi_spectrometer_get_formatted_spectrum(deviceID,
                 spectrometerID, &error, spectrum, spec_length);
-	
+
 	max_spec = max_array(spectrum, spec_length);
-	printf("\n\toptInteTime [%d], %ld ms, max value: %lf, [%d]",iter, optInteTime, max_spec, flag);
+	printf("\n\toptInteTime [%d], %ld ms, max value: %lf, [%d]",iter, optInteTime/1000, max_spec, flag);
 	
-	while(((max_spec > 160000) || (max_spec < 120000))&& (iter < maxiter)){
+	while(((max_spec > 160000) || (max_spec < 120000))&& (iter < maxiter)&&(max < 2)){
 		iter++;
-		ratio = 130000.0/(max_spec-1500);
-		if (max_spec > 16000)
-			ratio = 0.5;
+		if (max_spec > 1100){
+			ratio = 130000.0/(max_spec-1100);
+		}else{
+			ratio = 100;
+		}
+		if (max_spec > 160000){
+			ratio = 0.65;
+			max = 0;
+		}
 		optInteTime = (long)optInteTime * ratio;
 
 		if (optInteTime > maxAllowedInteTime){
 			optInteTime = maxAllowedInteTime;
+			max++;
 		}
 		if (optInteTime < minAllowedInteTime){
 			optInteTime = minAllowedInteTime;
@@ -186,13 +198,17 @@ long get_opt_integration_time_QEpro(long deviceID, long spectrometerID)//calibra
 		sbapi_spectrometer_set_integration_time_micros(
                 deviceID, spectrometerID, &error, optInteTime);
 		sleep(2);
+		printf("\n\toptInteTime [%d], %ld ms",iter, optInteTime/1000);
+
+		sbapi_data_buffer_clear(deviceID, buffer_ids[0], &error);
 		flag = sbapi_spectrometer_get_formatted_spectrum(deviceID,
-                spectrometerID, &error, spectrum, spec_length);
-		flag = sbapi_spectrometer_get_formatted_spectrum(deviceID,
-                spectrometerID, &error, spectrum, spec_length);
+                	spectrometerID, &error, spectrum, spec_length);
 		
+		sleep(2);
+
 		max_spec = max_array(spectrum, spec_length);
-		printf("\n\toptInteTime [%d], %ld ms, max value: %lf, [%d]",iter, optInteTime, max_spec, flag);
+		printf("\n\toptInteTime [%d], %ld ms, max value: %lf, [%d]",iter, optInteTime/1000, max_spec, flag);
+
 	}
 	free(spectrum);
 	return optInteTime;
@@ -205,14 +221,10 @@ void set_internal_shutter_for_QE_pro(long deviceID, int onoff)
 	int error_code;
 	int length;
 	int feature_numbers;
-	long *featureID;
-	unsigned char set_GPIO4_as_output[64];
-	unsigned char set_GPIO4_on[64];
-	unsigned char set_GPIO4_off[64];
+	long featureID;
 	const unsigned char STS_REQUEST_ENDPOINT = 0x01;
 	
-	unsigned char set_GPIO4_as_output = { 
-		0xc1, 0xc0, 0x00, 0x11, 0x00, 0x00, 0x00, 0x00, 
+	unsigned char set_GPIO4_as_output[64] = {0xc1, 0xc0, 0x00, 0x11, 0x00, 0x00, 0x00, 0x00, 
 		0x10, 0x01, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08,
 		0x10, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00,
@@ -220,8 +232,7 @@ void set_internal_shutter_for_QE_pro(long deviceID, int onoff)
 		0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0xc5, 0xc4, 0xc3, 0xc2 };
-	unsigned char set_GPIO4_on = { 
-		0xc1, 0xc0, 0x00, 0x11, 0x00, 0x00, 0x00, 0x00, 
+	unsigned char set_GPIO4_on[64] = {0xc1, 0xc0, 0x00, 0x11, 0x00, 0x00, 0x00, 0x00, 
 		0x10, 0x03, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08,
 		0x10, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00,
@@ -229,8 +240,7 @@ void set_internal_shutter_for_QE_pro(long deviceID, int onoff)
 		0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0xc5, 0xc4, 0xc3, 0xc2 };
-	unsigned char set_GPIO4_off = { 
-		0xc1, 0xc0, 0x00, 0x11, 0x00, 0x00, 0x00, 0x00, 
+	unsigned char set_GPIO4_off[64] = {0xc1, 0xc0, 0x00, 0x11, 0x00, 0x00, 0x00, 0x00, 
 		0x10, 0x03, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08,
 		0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00,
@@ -239,25 +249,26 @@ void set_internal_shutter_for_QE_pro(long deviceID, int onoff)
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0xc5, 0xc4, 0xc3, 0xc2 };
 	
-	feature_numbers = sbapi_get_number_of_raw_usb_access_features(deviceID, &error_code);
-	feature_numbers = sbapi_get_raw_usb_bus_access_features(deviceID, &error_code, featureID, feature_numbers);	
-	
-	length = sbapi_raw_usb_bus_access_write(deviceID, featureID[0], &error_code, set_GPIO4_as_output, sizeof(set_GPIO4_as_output), STS_REQUEST_ENDPOINT);
-	printf("\n %d byte of data send to device, set GPIO4 as output\n",length);
+	feature_numbers = sbapi_get_number_of_raw_usb_bus_access_features(deviceID, &error_code);
+	feature_numbers = sbapi_get_raw_usb_bus_access_features(deviceID, &error_code, &featureID, feature_numbers);	
+	sleep(1);
+	length = sbapi_raw_usb_bus_access_write(deviceID, featureID, &error_code, set_GPIO4_as_output, sizeof(set_GPIO4_as_output), STS_REQUEST_ENDPOINT);
+	printf("\n %d byte of data send to device, set GPIO4 as output, altogether %d feature numbers\n",length,feature_numbers);
 	if (onoff==0)
 	{
-		length = sbapi_raw_usb_bus_access_write(deviceID, featureID[0], &error_code, set_GPIO4_off, sizeof(set_GPIO4_off), STS_REQUEST_ENDPOINT);
-		printf("\n %d byte of data send to device, close the internal shutter\n",length);
+		length = sbapi_raw_usb_bus_access_write(deviceID, featureID, &error_code, set_GPIO4_off, sizeof(set_GPIO4_off), STS_REQUEST_ENDPOINT);
+		printf("\n %d byte of data send to device, featureID: %ld, turn on internal shutter [%d]\n",length, featureID, error_code);
 	}else if(onoff==1)
 	{
-		length = sbapi_raw_usb_bus_access_write(deviceID, featureID[0], &error_code, set_GPIO4_on, sizeof(set_GPIO4_on), STS_REQUEST_ENDPOINT);
-		printf("\n %d byte of data send to device, open the internal shutter\n",length);
+		length = sbapi_raw_usb_bus_access_write(deviceID, featureID, &error_code, set_GPIO4_on, sizeof(set_GPIO4_on), STS_REQUEST_ENDPOINT);
+		printf("\n %d byte of data send to device, featureID: %ld, turn off the internal shutter [%d]\n",length, featureID, error_code);
 	}
+	sleep(1);
 }
 
 
 
-
+/*
 void nonlinearity_correction(double *spectrum, int spec_length, double *nonlinear_coeff, double edark)//calibrate for nonlinearity
 {
 	double xpower;
@@ -274,6 +285,7 @@ void nonlinearity_correction(double *spectrum, int spec_length, double *nonlinea
 		spectrum[pixel] += edark;
 	}
 }
+*/
 
 void RemoveSpaces(char *source)
 {
@@ -359,19 +371,18 @@ void HR2000PLUS_operation(long deviceID, int Operation_ct){
 	int flag;
 	int length_nonlinear_coeff;
 	int number_of_lamps;
+
 	long *lamp_ids = 0;
 	long irrInteTime1;
 	long irrInteTime2;
 	long *spectrometer_ids;
 	long *nonlinearity_coeff_feature_ids = 0;
+
 	double *wavelengths;
 	double *spectrum1 = 0;
+	double *spectrum2 = 0;
 	double nonlinear_coeff[8];
-	double spectrum[2048][20];
 	double max_v;
-	double corrmax_v;
-	double nonlinearmax_v;
-	double edark;
 	char fname[100];
 	char *dateonly;		//date without day and replace space with "_"	
 
@@ -449,6 +460,11 @@ void HR2000PLUS_operation(long deviceID, int Operation_ct){
 	fprintf(f,"%f\n",wavelengths[spec_length-1]);
 	free(wavelengths);
 	/////////////////////////////////////////////////////////////////////////////
+	
+	printf("\t\t\tAttempting to set trigger mode to 0\n");
+        sbapi_spectrometer_set_trigger_mode(deviceID,
+                spectrometer_ids[0], &error, 0);
+
 	//collect signal for irradiance
 	//set the lamp off to get irradiance
 	number_of_lamps = sbapi_get_number_of_lamp_features(deviceID, &error);
@@ -459,6 +475,8 @@ void HR2000PLUS_operation(long deviceID, int Operation_ct){
 		lamp_ids[0], &error, 1);
 	printf("\n\t\t\tTurn the lamp on to get irradiance %s\n",sbapi_get_error_string(error));
 	sleep(2);
+
+	/////////////////////////////////////////////////////////////////////////////////////////////////////
 	
 	//get optimum integration time1
 	irrInteTime1 = get_opt_integration_time_HR2k(deviceID, spectrometer_ids[0]);
@@ -472,7 +490,7 @@ void HR2000PLUS_operation(long deviceID, int Operation_ct){
 	//set the lamp on to get radiance
 	sbapi_lamp_set_lamp_enable(deviceID,
 		lamp_ids[0], &error, 0);
-	printf("\n\t\t\tTurn the lamp on to get irradiance %s\n",sbapi_get_error_string(error));
+	printf("\n\t\t\tTurn the lamp off to get irradiance %s\n",sbapi_get_error_string(error));
 	sleep(2);
 	//get optimum integration time2
 	irrInteTime2 = get_opt_integration_time_HR2k(deviceID, spectrometer_ids[0]);
@@ -496,57 +514,55 @@ void HR2000PLUS_operation(long deviceID, int Operation_ct){
 			
 			spectrum1 = (double *)calloc((size_t)spec_length, sizeof(double));
 			printf("\nGetting a formatted spectrum.\n");
-			flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometer_ids[0], &error, spectrum1, spec_length);			
+			
+			flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometer_ids[0], 
+				&error, spectrum1, spec_length);
+			//max_v = max_array(spectrum1, spec_length);
+			//printf("...Result is (%d) [%s] max_val %lf integration time %ld\n", flag, 
+			//	sbapi_get_error_string(error), max_v, irrInteTime1);
+			sleep(1);			
+			flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometer_ids[0], 
+				&error, spectrum1, spec_length);
 			max_v = max_array(spectrum1, spec_length);
-			//dark correction
-			edark = dark_correct_HR(spectrum1);
-			corrmax_v = max_array(spectrum1, spec_length);
-			//apply nonlinearity correction
-			nonlinearity_correction(spectrum1, spec_length, nonlinear_coeff, edark);
-			nonlinearmax_v = max_array(spectrum1, spec_length);
-			//print information for raw value, dark corrected value, nonlinearity corrected value and irradiance value
-			
-			
-			printf("...Result is (%d) [%s] max_val %lf dark_corr_max_val %lf nonlinear_corr_max_val %lf\n", flag, 
-				sbapi_get_error_string(error), max_v, corrmax_v, nonlinearmax_v);
-			for (int m = 0; m < spec_length; m++){				
-				spectrum[m][j] = spectrum1[m]; 
-				fprintf(f,"%lf,", spectrum[m][j]);
+
+			printf("...Result is (%d) [%s] max_val %lf integration time %ld\n", flag, 
+				sbapi_get_error_string(error), max_v, irrInteTime1);
+
+			for (int m = 0; m < spec_length-1; m++){				
+				fprintf(f,"%lf,", spectrum1[m]);
 			}
-			//printf("get spectrum (%d) [%s]\n", j, sb_api_get_error_string(error));
-			free(spectrum1);
-			//print dark correction coeffs to end of each line column 2049
-			fprintf(f,"%lf\n", edark);
+			fprintf(f,"%lf\n", spectrum1[spec_length-1]);
 			sleep(2);
 
 			//turn on the lamp to get spectrum using irrInteTime2
 			sbapi_lamp_set_lamp_enable(deviceID,lamp_ids[0], &error, 0);
 			sbapi_spectrometer_set_integration_time_micros(deviceID, spectrometer_ids[0], &error, irrInteTime2);
 			sleep(2);
-			
-			spectrum1 = (double *)calloc((size_t)spec_length, sizeof(double));
+
+			spectrum2 = (double *)calloc((size_t)spec_length, sizeof(double));
 			printf("\nGetting a formatted spectrum.\n");
-			flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometer_ids[0], &error, spectrum1, spec_length);			
-			max_v = max_array(spectrum1, spec_length);
-			//dark correction
-			edark = dark_correct_HR(spectrum1);
-			corrmax_v = max_array(spectrum1, spec_length);
-			//apply nonlinearity correction
-			nonlinearity_correction(spectrum1, spec_length, nonlinear_coeff, edark);
-			nonlinearmax_v = max_array(spectrum1, spec_length);
-			//print information for raw value, dark corrected value, nonlinearity corrected value and irradiance value
+			
+			flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometer_ids[0], 
+				&error, spectrum2, spec_length);
+			//max_v = max_array(spectrum2, spec_length);
+			//printf("...Result is (%d) [%s] max_val %lf integration time %ld\n", flag, 
+			//	sbapi_get_error_string(error), max_v, irrInteTime2);
+			sleep(1);			
+			flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometer_ids[0], 
+				&error, spectrum2, spec_length);
+			max_v = max_array(spectrum2, spec_length);
 						
-			printf("...Result is (%d) [%s] max_val %lf dark_corr_max_val %lf nonlinear_corr_max_val %lf\n", flag, 
-				sbapi_get_error_string(error), max_v, corrmax_v, nonlinearmax_v);
-			for (int m = 0; m < spec_length; m++){				
-				spectrum[m][j] = spectrum1[m]; 
-				fprintf(f,"%lf,", spectrum[m][j]);
+			printf("...Result is (%d) [%s] max_val %lf integration time %ld\n", flag, 
+				sbapi_get_error_string(error), max_v, irrInteTime2);
+			for (int m = 0; m < spec_length-1; m++){				
+				fprintf(f,"%lf,", spectrum2[m]);
 			}
-			//printf("get spectrum (%d) [%s]\n", j, sb_api_get_error_string(error));
+			fprintf(f,"%lf\n", spectrum2[spec_length-1]);
 			free(spectrum1);
-			//print dark correction coeffs to end of each line column 2049
-			fprintf(f,"%lf\n", edark);
+			free(spectrum2);
+
 			sleep(2);
+
 		}
 	}
 	
@@ -567,6 +583,8 @@ void QE_PRO_operation(long deviceID, int Operation_ct){
 	int length_nonlinear_coeff;
 	int number_of_lamps;
 	int number_of_tec;
+	int number_of_buffer;
+	long *buffer_ids = 0;
 	long *lamp_ids = 0;
 	long *tec_ids = 0;
 	long irrInteTime1;
@@ -576,13 +594,12 @@ void QE_PRO_operation(long deviceID, int Operation_ct){
 	float temperature;
 	double *wavelengths;
 	double *spectrum1 = 0;
-	double *spectrum_dark = 0;
+	double *spectrum2 = 0;
+	double *spectrum_dark1 = 0;
+	double *spectrum_dark2 = 0;
 	double nonlinear_coeff[8];
-	double spectrum[2048][20];
 	double max_v;
-	double corrmax_v;
-	double nonlinearmax_v;
-	double edark;
+
 	char fname[100];
 	char *dateonly;		//date without day and replace space with "_"	
 
@@ -641,7 +658,14 @@ void QE_PRO_operation(long deviceID, int Operation_ct){
 	
 	//enable the TEC and set the temperature to -5 degree
 	sbapi_tec_set_enable(deviceID, tec_ids[0], &error, 1);
-	sbapi_tec_set_temperature_setpoint_degrees_C(deviceID,tec_ids[0],&error, -15.0);
+	sbapi_tec_set_temperature_setpoint_degrees_C(deviceID,tec_ids[0],&error, -10.0);
+	
+	//wait for 60 second for the TEC to work and reach the optimum temperature
+	sleep(30);
+	temperature = (float)sbapi_tec_read_temperature_degrees_C(deviceID, tec_ids[0],&error);
+	//print system temperature to file:
+	fprintf(f,"measuring temperature: %1.2f\n",temperature);
+
 		
 	//get the nonlinearity correction coefficients
 	number_of_nonlinearity_coeff_features = sbapi_get_number_of_nonlinearity_coeffs_features(deviceID, &error);
@@ -656,12 +680,6 @@ void QE_PRO_operation(long deviceID, int Operation_ct){
 	}
 	fprintf(f, "%e\n", nonlinear_coeff[length_nonlinear_coeff - 1]);
 	
-	//wait for 60 second for the TEC to work and reach the optimum temperature
-	sleep(30);
-	temperature = (float)sbapi_tec_read_temperature_degrees_C(deviceID, tec_ids[0],&error);
-	//print system temperature to file:
-	fprintf(f,"measuring temperature: %1.2f\n",temperature);
-	
 	/////////////////////////////////////////////////////////////////////////////////////////////////////
 	spec_length = sbapi_spectrometer_get_formatted_spectrum_length(deviceID, spectrometer_ids[0],&error);
 	wavelengths = (double *)calloc((size_t)spec_length, sizeof(double));
@@ -674,6 +692,11 @@ void QE_PRO_operation(long deviceID, int Operation_ct){
 	fprintf(f,"%f\n",wavelengths[spec_length-1]);
 	free(wavelengths);
 	/////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	printf("\t\t\tAttempting to set trigger mode to 0\n");
+        sbapi_spectrometer_set_trigger_mode(deviceID,
+                spectrometer_ids[0], &error, 0);
+
 	//collect signal for irradiance
 	//set the lamp off to get irradiance
 	number_of_lamps = sbapi_get_number_of_lamp_features(deviceID, &error);
@@ -683,10 +706,18 @@ void QE_PRO_operation(long deviceID, int Operation_ct){
 	sbapi_lamp_set_lamp_enable(deviceID,
 		lamp_ids[0], &error, 1);
 	printf("\n\t\t\tTurn the lamp on to get irradiance [%s]\n",sbapi_get_error_string(error));
+	/////////////////////////////////////////////////////////////////////////////////////////////////////
+	number_of_buffer = sbapi_get_number_of_data_buffer_features(deviceID, &error);
+	buffer_ids = (long *)calloc(number_of_buffer,sizeof(long));
+	number_of_buffer = sbapi_get_data_buffer_features(deviceID, &error,
+		buffer_ids, number_of_buffer);
+	//sbapi_data_buffer_clear(deviceID, buffer_ids[0], &error);
 	
+	/////////////////////////////////////////////////////////////////////////////////////////////////////
 	sleep(2);
 	//get optimum integration time1
 	irrInteTime1 = get_opt_integration_time_QEpro(deviceID, spectrometer_ids[0]);
+	sleep(2);
 	sbapi_spectrometer_set_integration_time_micros(deviceID, spectrometer_ids[0], &error, irrInteTime1);
 	printf("\n\nSet integration time to %ld ms [%s]\n", irrInteTime1/1000, sbapi_get_error_string(error));
 
@@ -696,16 +727,17 @@ void QE_PRO_operation(long deviceID, int Operation_ct){
 	//turn on the internal shutter to get the dark measurement 
 	set_internal_shutter_for_QE_pro(deviceID, 1);
 	sleep(2);
-	spectrum_dark = (double *)calloc((size_t)spec_length, sizeof(double));
-	flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometer_ids[0], &error, spectrum_dark, spec_length);
+	spectrum_dark1 = (double *)calloc((size_t)spec_length, sizeof(double));
+	sbapi_data_buffer_clear(deviceID, buffer_ids[0], &error);
+	flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometer_ids[0], &error, spectrum_dark1, spec_length);
 	printf("\nGetting a dark measurement spectrum.\n");
 	//turn off the internal shutter to get next measurement
 	set_internal_shutter_for_QE_pro(deviceID, 0);
 	for (int m = 0; m < spec_length-1; m++){				
-		fprintf(f,"%lf,", spectrum_dark[m]);
+		fprintf(f,"%lf,", spectrum_dark1[m]);
 	}
-	fprintf(f,"%f\n",spectrum_dark[spec_length-1]);
-	free(spectrum_dark);
+	fprintf(f,"%f\n",spectrum_dark1[spec_length-1]);
+	
 	///////////////////////////////////////////////////////////////////////////////////////////////////////
 	//set the lamp on for another radiance measurement
 	sbapi_lamp_set_lamp_enable(deviceID,
@@ -724,16 +756,20 @@ void QE_PRO_operation(long deviceID, int Operation_ct){
 	//turn on the internal shutter to get the dark measurement 
 	set_internal_shutter_for_QE_pro(deviceID, 1);
 	sleep(2);
-	spectrum_dark = (double *)calloc((size_t)spec_length, sizeof(double));
-	flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometer_ids[0], &error, spectrum_dark, spec_length);
+	spectrum_dark2 = (double *)calloc((size_t)spec_length, sizeof(double));
+	sbapi_data_buffer_clear(deviceID, buffer_ids[0], &error);
+	flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometer_ids[0], &error, spectrum_dark2, spec_length);
 	printf("\nGetting a dark measurement spectrum.\n");
 	//turn off the internal shutter to get next measurement
 	set_internal_shutter_for_QE_pro(deviceID, 0);
 	for (int m = 0; m < spec_length-1; m++){				
-		fprintf(f,"%lf,", spectrum_dark[m]);
+		fprintf(f,"%lf,", spectrum_dark2[m]);
 	}
-	fprintf(f,"%f\n\n",spectrum_dark[spec_length-1]);
-	free(spectrum_dark);		
+	fprintf(f,"%f\n\n",spectrum_dark2[spec_length-1]);
+	
+	free(spectrum_dark1);
+	free(spectrum_dark2);
+	
 	if(spec_length > 0){
 		//dark correction coefficient
 		//dark pixels are [0~3, 1040~1043] for QE-pro
@@ -746,75 +782,51 @@ void QE_PRO_operation(long deviceID, int Operation_ct){
 			
 			spectrum1 = (double *)calloc((size_t)spec_length, sizeof(double));
 			printf("\nGetting a formatted spectrum.\n");
+			sbapi_data_buffer_clear(deviceID, buffer_ids[0], &error);			
 			flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometer_ids[0], &error, spectrum1, spec_length);			
 			max_v = max_array(spectrum1, spec_length);
-			//dark correction
-			edark = dark_correct_QE(spectrum1);
-			corrmax_v = max_array(spectrum1, spec_length);
-			//apply nonlinearity correction
-			nonlinearity_correction(spectrum1, spec_length, nonlinear_coeff, edark);
-			nonlinearmax_v = max_array(spectrum1, spec_length);
-			//print information for raw value, dark corrected value, nonlinearity corrected value and irradiance value
-			
-			
-			printf("...Result is (%d) [%s] max_val %lf dark_corr_max_val %lf nonlinear_corr_max_val %lf\n", flag, 
-				sbapi_get_error_string(error), max_v, corrmax_v, nonlinearmax_v);
-			for (int m = 0; m < spec_length; m++){				
-				spectrum[m][j] = spectrum1[m]; 
-				fprintf(f,"%lf,", spectrum[m][j]);
+
+			printf("...Result is (%d) [%s] max_val %lf integtation time %ld\n", flag, 
+				sbapi_get_error_string(error), max_v, irrInteTime1);
+			for (int m = 0; m < spec_length-1; m++){				
+				fprintf(f,"%lf,", spectrum1[m]);
 			}
-			//printf("get spectrum (%d) [%s]\n", j, sb_api_get_error_string(error));
-			free(spectrum1);
-			//print dark correction coeffs to end of each line column 2049
-			fprintf(f,"%lf\n", edark);
+			fprintf(f,"%lf\n", spectrum1[spec_length-1]);
+
 			sleep(2);
-			
+			///////////////////////////////////////////////////////////////////////////////////////
 			//turn on the lamp to get spectrum using irrInteTime2
 			sbapi_lamp_set_lamp_enable(deviceID,lamp_ids[0], &error, 0);
 			sbapi_spectrometer_set_integration_time_micros(deviceID, spectrometer_ids[0], &error, irrInteTime2);
 			sleep(2);
 			
-			spectrum1 = (double *)calloc((size_t)spec_length, sizeof(double));
+			spectrum2 = (double *)calloc((size_t)spec_length, sizeof(double));
 			printf("\nGetting a formatted spectrum.\n");
-			flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometer_ids[0], &error, spectrum1, spec_length);			
-			max_v = max_array(spectrum1, spec_length);
-			//dark correction
-			edark = dark_correct_QE(spectrum1);
-			corrmax_v = max_array(spectrum1, spec_length);
-			//apply nonlinearity correction
-			nonlinearity_correction(spectrum1, spec_length, nonlinear_coeff, edark);
-			nonlinearmax_v = max_array(spectrum1, spec_length);
-			//print information for raw value, dark corrected value, nonlinearity corrected value and irradiance value
-	
-			
-			printf("...Result is (%d) [%s] max_val %lf dark_corr_max_val %lf nonlinear_corr_max_val %lf\n", flag, 
-				sbapi_get_error_string(error), max_v, corrmax_v, nonlinearmax_v);
-			for (int m = 0; m < spec_length; m++){				
-				spectrum[m][j] = spectrum1[m]; 
-				fprintf(f,"%lf,", spectrum[m][j]);
+			sbapi_data_buffer_clear(deviceID, buffer_ids[0], &error);			
+			flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometer_ids[0], &error, spectrum2, spec_length);			
+			max_v = max_array(spectrum2, spec_length);
+
+			printf("...Result is (%d) [%s] max_val %lf integtation time %ld\n", flag, 
+				sbapi_get_error_string(error), max_v, irrInteTime2);
+			for (int m = 0; m < spec_length-1; m++){				 
+				fprintf(f,"%lf,", spectrum2[m]);
 			}
-			//printf("get spectrum (%d) [%s]\n", j, sb_api_get_error_string(error));
+			fprintf(f,"%lf\n", spectrum2[spec_length-1]);
+
 			free(spectrum1);
-			//print dark correction coeffs to end of each line column 2049
-			fprintf(f,"%lf\n", edark);
+			free(spectrum2);
+
 			sleep(2);
 		}
 	}
 	
 	
 	fclose(f);
-	//free(spectrum);
+
 	printf("\n\nAttempting to close:\n");
-	
-	
+
+
 	sbapi_tec_set_enable(deviceID, tec_ids[0], &error, 0);
 	sbapi_close_device(deviceID, &error);
 	printf("\tResult is (%d) [%s]\n", flag, sbapi_get_error_string(error));
 }
-
-/*get the shutter information
-	number_of_shutters = sbapi_get_number_of_shutter_features(deviceID, &error);
-	shutter_ids = (long *)calloc(number_of_shutters, sizeof(long));
-	number_of_shutters = sbapi_get_shutter_features(deviceID, &error,
-            shutter_ids, number_of_shutters);
-			*/
