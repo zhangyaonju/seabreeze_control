@@ -656,11 +656,18 @@ void QE_PRO_operation(long deviceID, int Operation_ct){
 	//print system temperature to file:
 	fprintf(f,"ambient temperature: %1.2f\n",temperature);
 	
-	//enable the TEC and set the temperature to -5 degree
+	//enable the TEC and set the temperature to 20 degree
 	sbapi_tec_set_enable(deviceID, tec_ids[0], &error, 1);
+	sbapi_tec_set_temperature_setpoint_degrees_C(deviceID,tec_ids[0],&error, 20.0);
+	
+	//wait for 30 second for the TEC to work and reach the optimum temperature
+	sleep(30);
+	
+	//enable the TEC and set the temperature to -10 degree
+	//sbapi_tec_set_enable(deviceID, tec_ids[0], &error, 1);
 	sbapi_tec_set_temperature_setpoint_degrees_C(deviceID,tec_ids[0],&error, -10.0);
 	
-	//wait for 60 second for the TEC to work and reach the optimum temperature
+	//wait for 30 second for the TEC to work and reach the optimum temperature
 	sleep(30);
 	temperature = (float)sbapi_tec_read_temperature_degrees_C(deviceID, tec_ids[0],&error);
 	//print system temperature to file:
