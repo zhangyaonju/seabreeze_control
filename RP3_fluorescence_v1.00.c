@@ -10,6 +10,10 @@ For every 5 minutes, the crontab call this program to complete the following pro
 	4. start 20 pairs of observation (both for irradiance and reflectance)
 	5. do the dark correction and nonlinearity correction
 	6. get the time info and output the spectrum to the destination folder (/home/pi/spectrum_data/).
+	
+   20170515 updates: 
+   1. change TEC temperature control, heat up to 20 and then cool down to -10 degree C
+   2. change allowed DN range for optimal integration time to 100000 ~ 140000 for QE-pro and 9000~12000 for HR-2000+
 */
 
 #include <stdio.h>
@@ -74,6 +78,8 @@ long get_opt_integration_time_HR2k(long deviceID, long spectrometerID)//calibrat
 	int max = 0;
 
 	double max_spec;
+	double max_allowed_DN = 12000;
+	double min_allowed_DN = 9000;
 	double *spectrum = 0;
 	double ratio;
 	
@@ -95,14 +101,14 @@ long get_opt_integration_time_HR2k(long deviceID, long spectrometerID)//calibrat
 	max_spec = max_array(spectrum, spec_length);
 	printf("\n\toptInteTime [%d], %ld ms, max value: %lf, [%d]",iter, optInteTime/1000, max_spec, flag);
 	
-	while(((max_spec > 14000) || (max_spec < 11000))&& (iter < maxiter)&&(max < 2)){
+	while(((max_spec > max_allowed_DN) || (max_spec < min_allowed_DN))&& (iter < maxiter)&&(max < 2)){
 		iter++;
 		if (max_spec > 350){
-			ratio = 12500.0/(max_spec-350);
+			ratio = (min_allowed_DN+1000)/(max_spec-350);
 		}else{
 			ratio = 100;
 		}
-		if (max_spec > 14000){
+		if (max_spec > max_allowed_DN){
 			ratio = 0.65;
 			max = 0;
 		}
@@ -149,6 +155,8 @@ long get_opt_integration_time_QEpro(long deviceID, long spectrometerID)//calibra
 	int number_of_buffer;
 	
 	double max_spec;
+	double max_allowed_DN = 140000;
+	double min_allowed_DN = 100000;
 	double *spectrum = 0;
 	double ratio;
 	
@@ -175,14 +183,14 @@ long get_opt_integration_time_QEpro(long deviceID, long spectrometerID)//calibra
 	max_spec = max_array(spectrum, spec_length);
 	printf("\n\toptInteTime [%d], %ld ms, max value: %lf, [%d]",iter, optInteTime/1000, max_spec, flag);
 	
-	while(((max_spec > 160000) || (max_spec < 120000))&& (iter < maxiter)&&(max < 2)){
+	while(((max_spec > max_allowed_DN) || (max_spec < min_allowed_DN))&& (iter < maxiter)&&(max < 2)){
 		iter++;
 		if (max_spec > 1100){
-			ratio = 130000.0/(max_spec-1100);
+			ratio = (min_allowed_DN+10000)/(max_spec-1100);
 		}else{
 			ratio = 100;
 		}
-		if (max_spec > 160000){
+		if (max_spec > max_allowed_DN){
 			ratio = 0.65;
 			max = 0;
 		}
