@@ -21,3 +21,8 @@ find the make fuction under the test directory. change the api-test.c to our fil
 ## use crontab to setup the rountine
 one can set up a crontab command to run this fuction regualarly (recommand every 15 minutes from 6:00 am to 18:00 pm local time). and use another command to sycronize the data to an external USB drive during the midnight when the observation fuction is paused.
 
+## Configuration and test
+RP3 have a HDMI port and can be connected to a monitor for indoor configuration. When setting up for outdoor use, a vnc viewer may allow you to use other laptops to remotely control the RP3. The latest Raspbian OS have intergrated this function, but you may need static IP address so that you can control it through the Ethernet.
+
+## Notes
+Since the Raspberry does not have a internal time clock. When power off, time will be reset and affect the crontab schedule. A real clock module (RTM) is needed, e.g. (https://www.amazon.com/battery-Raspberry-Arduino-Atomic-Market/dp/B01M105UFC/ref=sr_1_1?ie=UTF8&qid=1494884994&sr=8-1&keywords=real+clock+module), other RTM may also be used, but may need different configuration.
