@@ -10,6 +10,10 @@ For every 5 minutes, the crontab call this program to complete the following pro
 	4. start 20 pairs of observation (both for irradiance and reflectance)
 	5. do the dark correction and nonlinearity correction
 	6. get the time info and output the spectrum to the destination folder (/home/pi/spectrum_data/).
+	
+   20170515 updates: 
+   1. change TEC temperature control, heat up to 20 and then cool down to -10 degree C
+   2. change allowed DN range for optimal integration time to 100000 ~ 140000 for QE-pro and 9000~12000 for HR-2000+
 */
 
 #include <stdio.h>
@@ -49,8 +53,6 @@ double dark_correct_HR(double *spectrum)	//dark_correction for HR2000+ e-dark pi
 	}
 	return average_dark;
 }
-
-
 double dark_correct_QE(double *spectrum,double *spectrum_dark)	//dark_correction for QE-pro using dark measurement
 {	
 	for (int i = 0; i < 1044; i++){
@@ -74,6 +76,8 @@ long get_opt_integration_time_HR2k(long deviceID, long spectrometerID)//calibrat
 	int max = 0;
 
 	double max_spec;
+	double max_allowed_DN = 12000;
+	double min_allowed_DN = 9000;
 	double *spectrum = 0;
 	double ratio;
 	
@@ -88,26 +92,22 @@ long get_opt_integration_time_HR2k(long deviceID, long spectrometerID)//calibrat
 	optInteTime = minAllowedInteTime;
 	sbapi_spectrometer_set_integration_time_micros(
                 deviceID, spectrometerID, &error, optInteTime);
-	sleep(1);
-	
-	flag = sbapi_spectrometer_get_formatted_spectrum(deviceID,
-                spectrometerID, &error, spectrum, spec_length);
-	sleep(1);
-	flag = sbapi_spectrometer_get_formatted_spectrum(deviceID,
-                spectrometerID, &error, spectrum, spec_length);
+			
+	flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometerID, 
+		&error, spectrum, spec_length);
 	sleep(1);
 	max_spec = max_array(spectrum, spec_length);
 	printf("\n\toptInteTime [%d], %ld ms, max value: %lf, [%d]",iter, optInteTime/1000, max_spec, flag);
 	
-	while(((max_spec > 15000) || (max_spec < 12000))&& (iter < maxiter)&&(max < 2)){
+	while(((max_spec > max_allowed_DN) || (max_spec < min_allowed_DN))&& (iter < maxiter)&&(max < 2)){
 		iter++;
-		if (max_spec > 400){
-			ratio = 13000.0/(max_spec-400);
+		if (max_spec > 350){
+			ratio = (min_allowed_DN+1000)/(max_spec-350);
 		}else{
 			ratio = 100;
 		}
-		if (max_spec > 15000){
-			ratio = 0.75;
+		if (max_spec > max_allowed_DN){
+			ratio = 0.65;
 			max = 0;
 		}
 			
@@ -122,11 +122,9 @@ long get_opt_integration_time_HR2k(long deviceID, long spectrometerID)//calibrat
 		}
 		sbapi_spectrometer_set_integration_time_micros(
                 	deviceID, spectrometerID, &error, optInteTime);
+		sleep(1);
 		printf("\n\toptInteTime [%d], %ld ms",iter, optInteTime/1000);
-		sleep(1);
-		flag = sbapi_spectrometer_get_formatted_spectrum(deviceID,
-                	spectrometerID, &error, spectrum, spec_length);
-		sleep(1);
+		
 		flag = sbapi_spectrometer_get_formatted_spectrum(deviceID,
                 	spectrometerID, &error, spectrum, spec_length);
 		sleep(1);		
@@ -155,6 +153,8 @@ long get_opt_integration_time_QEpro(long deviceID, long spectrometerID)//calibra
 	int number_of_buffer;
 	
 	double max_spec;
+	double max_allowed_DN = 140000;
+	double min_allowed_DN = 100000;
 	double *spectrum = 0;
 	double ratio;
 	
@@ -181,15 +181,15 @@ long get_opt_integration_time_QEpro(long deviceID, long spectrometerID)//calibra
 	max_spec = max_array(spectrum, spec_length);
 	printf("\n\toptInteTime [%d], %ld ms, max value: %lf, [%d]",iter, optInteTime/1000, max_spec, flag);
 	
-	while(((max_spec > 160000) || (max_spec < 120000))&& (iter < maxiter)&&(max < 2)){
+	while(((max_spec > max_allowed_DN) || (max_spec < min_allowed_DN))&& (iter < maxiter)&&(max < 2)){
 		iter++;
-		if (max_spec > 1200){
-			ratio = 130000.0/(max_spec-1200);
+		if (max_spec > 1100){
+			ratio = (min_allowed_DN+10000)/(max_spec-1100);
 		}else{
 			ratio = 100;
 		}
-		if (max_spec > 160000){
-			ratio = 0.75;
+		if (max_spec > max_allowed_DN){
+			ratio = 0.65;
 			max = 0;
 		}
 		optInteTime = (long)optInteTime * ratio;
@@ -377,7 +377,7 @@ void HR2000PLUS_operation(long deviceID, int Operation_ct){
 	int flag;
 	int length_nonlinear_coeff;
 	int number_of_lamps;
-	
+
 	long *lamp_ids = 0;
 	long irrInteTime1;
 	long irrInteTime2;
@@ -481,6 +481,8 @@ void HR2000PLUS_operation(long deviceID, int Operation_ct){
 		lamp_ids[0], &error, 1);
 	printf("\n\t\t\tTurn the lamp on to get irradiance %s\n",sbapi_get_error_string(error));
 	sleep(2);
+
+	/////////////////////////////////////////////////////////////////////////////////////////////////////
 	
 	//get optimum integration time1
 	irrInteTime1 = get_opt_integration_time_HR2k(deviceID, spectrometer_ids[0]);
@@ -518,10 +520,15 @@ void HR2000PLUS_operation(long deviceID, int Operation_ct){
 			
 			spectrum1 = (double *)calloc((size_t)spec_length, sizeof(double));
 			printf("\nGetting a formatted spectrum.\n");
-			flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometer_ids[0], 
-				&error, spectrum1, spec_length);			
 			
-			sleep(irrInteTime1/1000000);
+			flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometer_ids[0], 
+				&error, spectrum1, spec_length);
+			//max_v = max_array(spectrum1, spec_length);
+			//printf("...Result is (%d) [%s] max_val %lf integration time %ld\n", flag, 
+			//	sbapi_get_error_string(error), max_v, irrInteTime1);
+			sleep(1);			
+			flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometer_ids[0], 
+				&error, spectrum1, spec_length);
 			max_v = max_array(spectrum1, spec_length);
 
 			printf("...Result is (%d) [%s] max_val %lf integration time %ld\n", flag, 
@@ -531,20 +538,24 @@ void HR2000PLUS_operation(long deviceID, int Operation_ct){
 				fprintf(f,"%lf,", spectrum1[m]);
 			}
 			fprintf(f,"%lf\n", spectrum1[spec_length-1]);
-			free(spectrum1);
-
-
+			sleep(2);
 
 			//turn on the lamp to get spectrum using irrInteTime2
 			sbapi_lamp_set_lamp_enable(deviceID,lamp_ids[0], &error, 0);
 			sbapi_spectrometer_set_integration_time_micros(deviceID, spectrometer_ids[0], &error, irrInteTime2);
 			sleep(2);
-			
+
 			spectrum2 = (double *)calloc((size_t)spec_length, sizeof(double));
 			printf("\nGetting a formatted spectrum.\n");
+			
 			flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometer_ids[0], 
-				&error, spectrum2, spec_length);			
-			sleep(irrInteTime2/1000000);			
+				&error, spectrum2, spec_length);
+			//max_v = max_array(spectrum2, spec_length);
+			//printf("...Result is (%d) [%s] max_val %lf integration time %ld\n", flag, 
+			//	sbapi_get_error_string(error), max_v, irrInteTime2);
+			sleep(1);			
+			flag = sbapi_spectrometer_get_formatted_spectrum(deviceID, spectrometer_ids[0], 
+				&error, spectrum2, spec_length);
 			max_v = max_array(spectrum2, spec_length);
 						
 			printf("...Result is (%d) [%s] max_val %lf integration time %ld\n", flag, 
@@ -553,8 +564,10 @@ void HR2000PLUS_operation(long deviceID, int Operation_ct){
 				fprintf(f,"%lf,", spectrum2[m]);
 			}
 			fprintf(f,"%lf\n", spectrum2[spec_length-1]);
-			
+			free(spectrum1);
 			free(spectrum2);
+
+			sleep(2);
 
 		}
 	}
@@ -649,11 +662,18 @@ void QE_PRO_operation(long deviceID, int Operation_ct){
 	//print system temperature to file:
 	fprintf(f,"ambient temperature: %1.2f\n",temperature);
 	
-	//enable the TEC and set the temperature to -5 degree
+	//enable the TEC and set the temperature to 20 degree
 	sbapi_tec_set_enable(deviceID, tec_ids[0], &error, 1);
+	sbapi_tec_set_temperature_setpoint_degrees_C(deviceID,tec_ids[0],&error, 20.0);
+	
+	//wait for 30 second for the TEC to work and reach the optimum temperature
+	sleep(30);
+	
+	//enable the TEC and set the temperature to -10 degree
+	//sbapi_tec_set_enable(deviceID, tec_ids[0], &error, 1);
 	sbapi_tec_set_temperature_setpoint_degrees_C(deviceID,tec_ids[0],&error, -10.0);
 	
-	//wait for 60 second for the TEC to work and reach the optimum temperature
+	//wait for 30 second for the TEC to work and reach the optimum temperature
 	sleep(30);
 	temperature = (float)sbapi_tec_read_temperature_degrees_C(deviceID, tec_ids[0],&error);
 	//print system temperature to file:
