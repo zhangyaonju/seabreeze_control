@@ -24,5 +24,8 @@ one can set up a crontab command to run this fuction regualarly (recommand every
 ## Configuration and test
 RP3 have a HDMI port and can be connected to a monitor for indoor configuration. When setting up for outdoor use, a vnc viewer may allow you to use other laptops to remotely control the RP3. The latest Raspbian OS have intergrated this function, but you may need static IP address so that you can control it through the Ethernet.
 
+## remote access through a 4g celluar module
+The data obtained by this system can be uploaded to a server with static IP address. However, the 4g cellular module usually cannot provide a static IP that is required for remote access. A teamviewer software can be installed on RP3 and used for remote control. https://www.teamviewer.com/en/download/linux/#downloadAdditionalDownloads
+
 ## Notes
 Since the Raspberry does not have a internal time clock. When power off, time will be reset and affect the crontab schedule. A real clock module (RTM) is needed, e.g. (https://www.amazon.com/battery-Raspberry-Arduino-Atomic-Market/dp/B01M105UFC/ref=sr_1_1?ie=UTF8&qid=1494884994&sr=8-1&keywords=real+clock+module), other RTM may also be used, but may need different configuration.
