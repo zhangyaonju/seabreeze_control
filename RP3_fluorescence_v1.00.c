@@ -29,6 +29,7 @@ For every 5 minutes, the crontab call this program to complete the following pro
 
 void HR2000PLUS_operation(long deviceID, int Operation_ct);
 void QE_PRO_operation(long deviceID, int Operation_ct);
+void QE_PRO_fixed_fime_operation(long deviceID, int Operation_ct);
 double max_array(double *arr, int length) //get maximun value of the spectrum
 {
 	double maxVal = arr[0];
