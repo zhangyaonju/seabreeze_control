@@ -25,6 +25,6 @@
 # m h  dom mon dow   command
 
 */15 6-20 * * * /home/pi/Documents/seabreeze-3.0.11/SeaBreeze/test/RP3_fluorescence_716
-1 0 * * * ftp-upload -h mangrove.rccc.ou.edu -u eomfftp --password upfile@E0MF -d /SIFdata/ /home/pi/spectrum_data/*
+1 0 * * * ftp-upload -h yourftpaddress -u yourftpusername --password yourftppassword -d /SIFdata/ /home/pi/spectrum_data/*
 1 1 * * * mv /home/pi/spectrum_data/* /media/pi/DATA1/data/
 1 2 * * * reboot
