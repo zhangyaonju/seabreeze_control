@@ -136,12 +136,12 @@ nonlinearity_correction_HR<-function(HR_data){
 }
 
 irradiance_calc_QE<-function(QE_data,nonlinearity_corrected,QE_CC,QE_BF){
-  sr_bf<-0.153721
-  sr_cc<-pi
-  area_bf<-0.25*pi*1e-6
-  area_cc<-1.95*1.95*pi*1e-6
-  wavelength_spread_QE<-59.28809/1043
-  obs<-dim(QE_data$spectrum)[1]/2
+  sr_bf<-0.153721       #solid angle for bare fiber
+  sr_cc<-pi             #solid angle for cosine corrector
+  area_bf<-0.25*pi*1e-6      # area of the bare fiber, in m^2
+  area_cc<-1.95*1.95*pi*1e-6 # area of the cosine corrector, in m^2
+  wavelength_spread_QE<-59.28809/1043     #band width for each ccd pixel   
+  obs<-dim(QE_data$spectrum)[1]/2         # five pairs of observation, 1,3,5,7,9 for irradiance, 2,4,6,8,10 for radiance
   factor<-rep(c(QE_CC[,2]/sr_cc/(QE_data$inte_t1/1e6)/area_cc/wavelength_spread_QE/1e3,
                 QE_BF[,2]/sr_bf/(QE_data$inte_t2/1e6)/area_bf/wavelength_spread_QE/1e3),obs)
   #this factor used to convert count to mW/m2/sr/nm
